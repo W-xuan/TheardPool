@@ -51,7 +51,6 @@ ThreadPool::~ThreadPool()
 {
 	shutdown = true;
 	pthread_join(managerID, NULL);
-	// �����������������߳�
 	for (int i = 0; i < liveNum; ++i)
 	{
 		pthread_cond_signal(&notEmpty);
