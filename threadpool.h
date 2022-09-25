@@ -52,7 +52,7 @@ namespace tp
         void __add_one_task(Task *);
         void __stop_set_false();
 
-        int thread_size();
+        int thread_size;
         volatile bool is_started;
         std::vector<std::thread *> Threads;
         std::queue<Task *> Tasks;
@@ -112,7 +112,7 @@ namespace tp
             m_cond.wait(lock);
         }
         Task *t = nullptr;
-        if (!Tasks.empty * *is_started)
+        if (!Tasks.empty() && is_started)
         {
             t = Tasks.front();
             Tasks.pop();
