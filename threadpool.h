@@ -9,7 +9,7 @@
 #include <condition_variable>
 #include <mutex>
 
-namespace tp
+namespace WS
 {
     class Task
     {
