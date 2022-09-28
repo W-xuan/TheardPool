@@ -11,13 +11,14 @@
 
 namespace WS
 {
+
     class Task
     {
     public:
         template <typename Func_T, typename... ARGS>
         Task(Func_T f, ARGS... args)
         {
-            func = std::bind(f, std::forward<ARGS>(args)...)
+            func = std::bind(f, std::forward<ARGS>(args)...);
         }
         void run()
         {
@@ -31,10 +32,14 @@ namespace WS
     class thread_pool
     {
     public:
-        thread_pool(int thread_size = 5) : thread_size(thread_size),
-                                           is_started(false),
-                                           m_mutex(),
-                                           m_cond()
+        thread_pool(int thread_size = 5)
+            : thread_size(thread_size),
+              is_started(false),
+              m_mutex(),
+              m_cond(),
+              m_queue_cond(),
+              m_queue_mutex(),
+              m_mutex2()
         {
         }
         void start();
@@ -42,8 +47,10 @@ namespace WS
         template <typename Func_T, typename... ARGS>
         void add_one_task(Func_T f, ARGS... args)
         {
+            std::unique_lock<std::mutex> lock(m_queue_mutex);
             __add_one_task(new Task(f, std::forward<ARGS>(args)...));
         }
+        void stop_until_empty();
         ~thread_pool() { stop(); }
 
     private:
@@ -57,8 +64,10 @@ namespace WS
         std::vector<std::thread *> Threads;
         std::queue<Task *> Tasks;
 
-        std::mutex m_mutex;
+        std::mutex m_mutex, m_mutex2;
+        std::mutex m_queue_mutex;
         std::condition_variable m_cond;
+        std::condition_variable m_queue_cond;
     };
 
     void thread_pool::start()
@@ -71,17 +80,25 @@ namespace WS
         }
     }
 
-    void thread_pool::__stop_set_false()
+    void thread_pool::stop_until_empty()
     {
-        std::unique_lock<std::mutex> lock(m_mutex);
-        is_started = false;
-        m_cond.notify_all();
+        std::unique_lock<std::mutex> lock1(m_mutex2);
+        std::unique_lock<std::mutex> lock2(m_queue_mutex);
+        while (!Tasks.empty())
+        {
+            m_queue_cond.wait(lock1);
+        }
+        stop();
         return;
     }
 
     void thread_pool::stop()
     {
-        __stop_set_false();
+        {
+            std::unique_lock<std::mutex> lock(m_mutex);
+            is_started = false;
+            m_cond.notify_all();
+        }
         for (int i = 0; i < Threads.size(); i++)
         {
             Threads[i]->join();
@@ -90,6 +107,7 @@ namespace WS
         Threads.clear();
         return;
     }
+
     void thread_pool::thread_loop()
     {
         while (is_started)
@@ -97,7 +115,6 @@ namespace WS
             Task *t = get_one_task();
             if (t != nullptr)
             {
-                std::cout << "thread_loop tid: " << std::this_thread::get_id() << std::endl;
                 t->run();
             }
         }
@@ -116,6 +133,11 @@ namespace WS
         {
             t = Tasks.front();
             Tasks.pop();
+            if (Tasks.empty())
+            {
+                std::unique_lock<std::mutex> lock2(m_mutex2);
+                m_queue_cond.notify_all();
+            }
         }
         return t;
     }
@@ -127,6 +149,7 @@ namespace WS
         m_cond.notify_one();
         return;
     }
+
 }
 
 #endif
